@@ -1,0 +1,60 @@
+name: Version package
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    if: github.repository == 'datasplice-labs/datasplice-zendesk' && !github.event.repository.fork
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check version App configuration
+      env:
+        VERSION_APP_ID: ${{ secrets.VERSION_APP_ID }}
+        VERSION_APP_PRIVATE_KEY: ${{ secrets.VERSION_APP_PRIVATE_KEY }}
+      run: |
+        test -n "$VERSION_APP_ID" || { echo "VERSION_APP_ID is required" >&2; exit 1; }
+        test -n "$VERSION_APP_PRIVATE_KEY" || { echo "VERSION_APP_PRIVATE_KEY is required" >&2; exit 1; }
+
+    - name: Create version App token
+      id: app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ secrets.VERSION_APP_ID }}
+        private-key: ${{ secrets.VERSION_APP_PRIVATE_KEY }}
+        permission-contents: write
+
+    - name: Check out repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ steps.app-token.outputs.token }}
+
+    - name: Calculate version
+      env:
+        BASE_SHA: ${{ github.event.before }}
+        HEAD_SHA: ${{ github.sha }}
+      run: bash .github/scripts/set-version.sh
+
+    - name: Commit and tag version
+      env:
+        VERSION_APP_NAME: ${{ steps.app-token.outputs.app-slug }}
+        VERSION_APP_EMAIL: ${{ steps.app-token.outputs.app-slug }}@users.noreply.github.com
+      run: |
+        if git diff --quiet -- datasplice.yaml; then
+          echo "No version change required."
+          exit 0
+        fi
+
+        version="$(awk -F'"' '/^version:/ { print $2; exit }' datasplice.yaml)"
+        git config user.name "$VERSION_APP_NAME"
+        git config user.email "$VERSION_APP_EMAIL"
+        git add datasplice.yaml
+        git commit -m "chore(release): v$version [skip ci]"
+        git tag -a "v$version" -m "Release v$version"
+        git push origin HEAD:master "v$version"

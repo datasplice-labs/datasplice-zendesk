@@ -1,0 +1,81 @@
+# Datasplice package for the Zendesk Support API (read-only: tickets).
+
+name: "zendesk"
+version: "0.1.0"
+description: "Zendesk Support tickets"
+manifest_version: 1
+
+settings:
+  subdomain:
+    type: string
+    required: true
+    description: "Your Zendesk subdomain, e.g. 'foo' for foo.zendesk.com"
+
+secrets:
+  ZENDESK_EMAIL:
+    description: "Email of the API user"
+  ZENDESK_TOKEN:
+    description: "API token from Admin Center -> Apps and integrations -> APIs -> Zendesk API"
+
+base_url: "https://{{ settings.subdomain }}.zendesk.com/api/v2"
+
+auth:
+  type: basic
+  username: "{{ secrets.ZENDESK_EMAIL }}/token"
+  password: "{{ secrets.ZENDESK_TOKEN }}"
+
+# Conservative: Zendesk's real limit depends on the plan.
+# Team = 200 RPM
+# Growth/Professional = 400 RPM
+# Enterprise = 700 RPM
+# High Volume API add-on = 2500 RPM
+rate_limit:
+  requests: 60
+  per: minute
+
+retry:
+  on: [429, 500, 502, 503, 504]
+  respect_retry_after: true
+  max_attempts: 5
+  backoff: exponential
+  initial_delay: 1s
+
+actions:
+  # Ticket-related action
+  # The following endpoints are all related to the ticket section on Zendesk API.
+  # You can find more information about these endpoints in the Zendesk API documentation:
+  # https://developer.zendesk.com/api-reference/ticketing/tickets/tickets/
+
+  # https://developer.zendesk.com/api-reference/ticketing/tickets/tickets/#list-tickets
+  list_tickets:
+    role: source
+    method: GET
+    path: "/tickets.json"
+    query:
+      "page[size]": 100
+    records: "$.tickets"
+    paginate:
+      style: cursor
+      next: "$.links.next"
+      until: "$.meta.has_more == false"
+    # The one derived field: a flat copy of a nested value. Custom fields
+    # need an account-specific id, so this uses a universal one instead.
+    fields:
+      via_channel: "$.via.channel"
+
+  # https://developer.zendesk.com/api-reference/ticketing/tickets/tickets/#list-deleted-tickets
+  list_deleted_tickets:
+    role: source
+    method: GET
+    path: "/deleted_tickets.json"
+    query:
+      "page[size]": 100
+    records: "$.deleted_tickets"
+    paginate:
+      style: cursor
+      next: "$.links.next"
+      until: "$.meta.has_more == false"
+    # The one derived field: a flat copy of a nested value. Custom fields
+    # need an account-specific id, so this uses a universal one instead.
+    fields:
+      via_channel: "$.via.channel"

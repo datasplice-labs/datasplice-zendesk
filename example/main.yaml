@@ -1,0 +1,19 @@
+name: "zendesk tickets"
+
+steps:
+  # Run `datasplice get`.
+  - uses: "github.com/datasplice-labs/datasplice-zendesk@v0.1.0"
+    action: "tickets"
+    max_records: 10 # remove for the full run
+    secrets: ["ZENDESK_EMAIL", "ZENDESK_TOKEN"]
+    with:
+      subdomain: "company" # replace with your subdomain
+
+  - uses: "datasplice/map"
+    with:
+      select: ["id", "subject", "status", "priority", "created_at", "updated_at", "via_channel"]
+
+  - uses: "datasplice/csv"
+    with:
+      path: "tickets.csv"
+      atomic: true
